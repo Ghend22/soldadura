@@ -2,10 +2,21 @@ import sys
 import cv2
 import torch
 import os
+import firebase_admin
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, 
                             QVBoxLayout, QWidget, QPushButton)
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap
+from firebase_admin import credentials, db
+from datetime import datetime
+
+# Carga las credenciales del archivo JSON descargado
+cred = credentials.Certificate("serviceAccountKey.json")
+
+# Inicializa la aplicación con privilegios de administrador y la URL de tu base de datos
+firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://eppsoldadura-default-rtdb.firebaseio.com/'
+})
 
 # Solución para Windows Path
 import pathlib
@@ -90,8 +101,31 @@ class VideoApp(QMainWindow):
         
         # Detección
         results = self.model(frame)
-        frame_out = results.render()[0]
+        detections = results.pred[0]
+
+        labels = ['Persona', 'Casco', 'Arco']
+
+
+        # Registrar resultados en Firebase
+        for *box, conf, cls in detections:
+            label = labels[int(cls)]
+            confidence = float(conf)
+
+        # REGISTRO EN FIREBASE
+        ref = db.reference('detecciones')
+        ref.push({
+            'label': label,
+            'confianza': round(confidence, 2),
+            'timestamp': datetime.now().isoformat()
+        })
         
+        # Mostrar resultado en interfaz
+        frame_out = results.render()[0]
+        frame_out = cv2.cvtColor(frame_out, cv2.COLOR_BGR2RGB)
+        h, w, ch = frame_out.shape
+        bytes_per_line = ch * w
+        qt_image = QImage(frame_out.data, w, h, bytes_per_line, QImage.Format_RGB888)
+
         # Convertir a formato para Qt
         frame_out = cv2.cvtColor(frame_out, cv2.COLOR_BGR2RGB)
         h, w, ch = frame_out.shape
